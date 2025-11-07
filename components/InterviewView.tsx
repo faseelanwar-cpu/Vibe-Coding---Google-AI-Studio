@@ -11,6 +11,8 @@ interface InterviewViewProps {
 
 type InterviewStatus = 'initializing' | 'generating_question' | 'generating_audio' | 'speaking_question' | 'listening' | 'transcribing' | 'processing_answer';
 
+const TOTAL_QUESTIONS = 7; // Assuming an average of 7 questions for progress calculation
+
 const InterviewView: React.FC<InterviewViewProps> = ({ initialState, onFinish }) => {
   const [status, setStatus] = useState<InterviewStatus>('initializing');
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([]);
@@ -170,6 +172,8 @@ const InterviewView: React.FC<InterviewViewProps> = ({ initialState, onFinish })
       </div>
     );
   }
+  
+  const progressPercentage = questionNumber > 0 ? Math.min(100, (questionNumber / TOTAL_QUESTIONS) * 100) : 0;
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col items-center justify-center min-h-[calc(100vh-80px)]">
@@ -181,7 +185,20 @@ const InterviewView: React.FC<InterviewViewProps> = ({ initialState, onFinish })
                  </div>
             ) : (
                 <>
-                <p className="text-sm text-slate-400 mb-2">Question {questionNumber}</p>
+                <div className="mb-6">
+                    <div className="flex justify-between items-center text-sm text-slate-400 mb-2">
+                        <span>Interview Progress</span>
+                        <span>{Math.round(progressPercentage)}%</span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-2">
+                        <div
+                            className="bg-indigo-500 h-2 rounded-full transition-all duration-500"
+                            style={{ width: `${progressPercentage}%` }}
+                        ></div>
+                    </div>
+                </div>
+
+                <p className="text-sm text-slate-400 mb-2">Question {questionNumber} of {TOTAL_QUESTIONS}</p>
                 <h1 className="text-2xl font-semibold text-slate-50">
                     "{currentQuestion}"
                 </h1>

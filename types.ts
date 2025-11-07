@@ -1,4 +1,11 @@
-export enum AppView {
+export enum TopLevelView {
+  SIGNIN = 'signin',
+  ADMIN_PIN = 'admin-pin',
+  ADMIN_PANEL = 'admin-panel',
+  APP = 'app',
+}
+
+export enum InterviewFlowView {
   SETUP = 'setup',
   INTERVIEW = 'interview',
   REPORT = 'report',
