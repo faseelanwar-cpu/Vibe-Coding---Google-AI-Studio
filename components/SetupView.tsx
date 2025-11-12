@@ -5,9 +5,10 @@ import { FileUploadIcon, SpinnerIcon } from './icons';
 
 interface SetupViewProps {
   onStart: (initialState: { jd: string; cv?: DocumentData; linkedIn?: DocumentData }) => void;
+  onShowInstructions: () => void;
 }
 
-const SetupView: React.FC<SetupViewProps> = ({ onStart }) => {
+const SetupView: React.FC<SetupViewProps> = ({ onStart, onShowInstructions }) => {
   const [jd, setJd] = useState('');
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [linkedinFile, setLinkedinFile] = useState<File | null>(null);
@@ -71,13 +72,19 @@ const SetupView: React.FC<SetupViewProps> = ({ onStart }) => {
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="text-center mb-10">
+      <div className="relative text-center mb-10">
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
           AI mock interviews that match the job.
         </h1>
         <p className="text-slate-300 max-w-2xl mx-auto">
           Paste the job description, upload your CV or LinkedIn PDF, and get a realistic, voice-first interview.
         </p>
+         <button 
+            onClick={onShowInstructions} 
+            className="absolute top-0 right-0 text-sm text-slate-400 hover:text-indigo-400 transition-colors px-4 py-2 rounded-lg border border-slate-700 hover:border-slate-600"
+          >
+            Instructions
+          </button>
       </div>
 
       <div className="grid md:grid-cols-2 gap-8 items-stretch">

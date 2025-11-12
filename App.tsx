@@ -5,7 +5,9 @@ import ReportView from './components/ReportView';
 import SigninView from './components/SigninView';
 import AdminPinView from './components/AdminPinView';
 import AdminPanelView from './components/AdminPanelView';
-import { InterviewFlowView, InitialInterviewState, InterviewReport, TopLevelView } from './types';
+import InstructionsModal from './components/InstructionsModal';
+import CVSuggestionsView from './components/CVSuggestionsView'; // New
+import { InterviewFlowView, InitialInterviewState, InterviewReport, TopLevelView, Feature } from './types';
 import { UserIcon, SpinnerIcon } from './components/icons';
 import * as userService from './services/userService';
 import './firebaseConfig'; // Ensures Firebase is initialized
@@ -13,10 +15,12 @@ import './firebaseConfig'; // Ensures Firebase is initialized
 const App: React.FC = () => {
   // Top-level application state
   const [currentView, setCurrentView] = useState<TopLevelView>(TopLevelView.SIGNIN);
+  const [activeFeature, setActiveFeature] = useState<Feature>(Feature.CV_SUGGESTIONS); // New
   const [approvedEmails, setApprovedEmails] = useState<string[]>([]);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showInstructions, setShowInstructions] = useState(false);
 
   // State for the core interview flow
   const [interviewFlowView, setInterviewFlowView] = useState<InterviewFlowView>(InterviewFlowView.SETUP);
@@ -62,6 +66,9 @@ const App: React.FC = () => {
     setInitialInterviewState(null);
     setInterviewReport(null);
   }, []);
+  
+  const openInstructions = () => setShowInstructions(true);
+  const closeInstructions = () => setShowInstructions(false);
 
   // --- Admin Panel Handlers ---
 
@@ -114,7 +121,17 @@ const App: React.FC = () => {
         return interviewReport && <ReportView report={interviewReport} onStartOver={handleStartOver} />;
       case InterviewFlowView.SETUP:
       default:
-        return <SetupView onStart={handleInterviewStart} />;
+        return <SetupView onStart={handleInterviewStart} onShowInstructions={openInstructions} />;
+    }
+  };
+
+  const renderAppContent = () => {
+    switch (activeFeature) {
+      case Feature.INTERVIEW:
+        return renderInterviewFlow();
+      case Feature.CV_SUGGESTIONS:
+      default:
+        return <CVSuggestionsView onShowInstructions={openInstructions} />;
     }
   };
 
@@ -138,7 +155,7 @@ const App: React.FC = () => {
 
     switch(currentView) {
       case TopLevelView.SIGNIN:
-        return <SigninView approvedEmails={approvedEmails} onSignin={handleSignin} onNavigateAdmin={() => setCurrentView(TopLevelView.ADMIN_PIN)} />;
+        return <SigninView approvedEmails={approvedEmails} onSignin={handleSignin} onNavigateAdmin={() => setCurrentView(TopLevelView.ADMIN_PIN)} onShowInstructions={openInstructions} />;
       case TopLevelView.ADMIN_PIN:
         return <AdminPinView onCorrectPin={() => setCurrentView(TopLevelView.ADMIN_PANEL)} onBack={() => setCurrentView(TopLevelView.SIGNIN)} />;
       case TopLevelView.ADMIN_PANEL:
@@ -149,23 +166,44 @@ const App: React.FC = () => {
           setCurrentView(TopLevelView.SIGNIN);
           return null;
         }
-        return renderInterviewFlow();
+        return renderAppContent();
       default:
-        return <SigninView approvedEmails={approvedEmails} onSignin={handleSignin} onNavigateAdmin={() => setCurrentView(TopLevelView.ADMIN_PIN)} />;
+        return <SigninView approvedEmails={approvedEmails} onSignin={handleSignin} onNavigateAdmin={() => setCurrentView(TopLevelView.ADMIN_PIN)} onShowInstructions={openInstructions} />;
     }
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans">
+       {showInstructions && <InstructionsModal onClose={closeInstructions} />}
       <header className="border-b border-slate-800 bg-slate-950/70 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-400"></div>
             <span className="font-semibold tracking-tight text-lg">Interview Coach Pro</span>
           </div>
+          
+          {currentUserEmail && (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="flex items-center gap-2 bg-slate-900/50 border border-slate-800 rounded-lg p-1 text-sm">
+                <button 
+                  onClick={() => setActiveFeature(Feature.CV_SUGGESTIONS)}
+                  className={`px-4 py-1 rounded-md transition-colors ${activeFeature === Feature.CV_SUGGESTIONS ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  CV Suggestions
+                </button>
+                <button 
+                  onClick={() => setActiveFeature(Feature.INTERVIEW)}
+                  className={`px-4 py-1 rounded-md transition-colors ${activeFeature === Feature.INTERVIEW ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  Interview
+                </button>
+              </div>
+            </div>
+          )}
+
           {currentUserEmail && (
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-slate-400">
+              <div className="hidden sm:flex items-center gap-2 text-sm text-slate-400">
                 <UserIcon />
                 <span>{currentUserEmail}</span>
               </div>

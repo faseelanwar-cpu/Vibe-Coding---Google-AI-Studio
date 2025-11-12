@@ -5,6 +5,11 @@ export enum TopLevelView {
   APP = 'app',
 }
 
+export enum Feature {
+  CV_SUGGESTIONS = 'cv',
+  INTERVIEW = 'interview',
+}
+
 export enum InterviewFlowView {
   SETUP = 'setup',
   INTERVIEW = 'interview',
@@ -51,4 +56,26 @@ export interface InterviewReport {
   transcript: TranscriptTurn[];
   downloadableTranscriptMarkdown: string;
   downloadableReportText: string;
+}
+
+
+// New, expert-level structure for CV suggestions
+export interface SuggestedImprovement {
+  section: 'Experience' | 'Summary' | 'Skills' | 'Achievements' | string;
+  original: string;
+  suggestion: string;
+  reason: string;
+}
+
+export interface CVAnalysisResult {
+  match_score: number;
+  match_explanation: string[];
+  suggested_improvements: SuggestedImprovement[];
+  critical_additions: string[];
+}
+
+// New structure for the full CV preview
+export interface FullCVPreviewResult {
+    full_cv_preview_html: string;
+    downloadable_cv_markdown: string;
 }
