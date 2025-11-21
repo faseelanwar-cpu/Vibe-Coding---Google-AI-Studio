@@ -2,13 +2,16 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { DocumentData, CVAnalysisResult, SuggestedImprovement, FullCVPreviewResult } from '../types';
 import { fileToBase64 } from '../utils/fileUtils';
 import * as geminiService from '../services/geminiService';
-import { FileUploadIcon, SpinnerIcon, CheckCircleIcon, ArrowLeftIcon, DownloadIcon } from './icons';
+import { FileUploadIcon, SpinnerIcon, ArrowLeftIcon, DownloadIcon } from './icons';
 
 interface CVSuggestionsViewProps {
   onShowInstructions: () => void;
+  initialAnalysis: CVAnalysisResult | null;
+  onAnalysisComplete: (result: CVAnalysisResult, jdSnippet: string) => void;
+  onReset: () => void;
 }
 
-const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstructions }) => {
+const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstructions, initialAnalysis, onAnalysisComplete, onReset }) => {
   const [cvView, setCvView] = useState<'analysis' | 'preview'>('analysis');
   const [jd, setJd] = useState('');
   const [cvFile, setCvFile] = useState<File | null>(null);
@@ -21,6 +24,15 @@ const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstruction
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
   const [previewResult, setPreviewResult] = useState<FullCVPreviewResult | null>(null);
 
+  // Load historical data if provided
+  useEffect(() => {
+      if (initialAnalysis) {
+          setAnalysisResult(initialAnalysis);
+          // Note: Historical data currently doesn't support generating full CV preview because we don't store the original CV text due to size/privacy concerns in this demo.
+      } else {
+          setAnalysisResult(null);
+      }
+  }, [initialAnalysis]);
 
   const isReadyForAnalysis = useMemo(() => jd.trim().length > 50 && cvFile, [jd, cvFile]);
 
@@ -41,12 +53,17 @@ const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstruction
     try {
       const { base64, mimeType } = await fileToBase64(cvFile!);
       const cvDoc: DocumentData = { base64, mimeType, name: cvFile!.name };
-      // We need the raw text for the preview generation step later
       const cvTextResponse = await new Response(cvFile!).text(); 
+      // Note: Reading PDF as text via Response/Blob stream isn't perfect, but we use Gemini for the actual extraction.
+      // Storing this raw text for the 'preview' step.
       setOriginalCvText(cvTextResponse);
 
       const result = await geminiService.analyzeCV(jd, cvDoc);
       setAnalysisResult(result);
+      
+      // Auto save
+      onAnalysisComplete(result, jd);
+
     } catch (err) {
       console.error(err);
       const errorMessage = err instanceof Error ? err.message : JSON.stringify(err);
@@ -66,6 +83,7 @@ const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstruction
     setIsLoading(false);
     setApprovedAdditions([]);
     setPreviewResult(null);
+    onReset();
   };
   
   const handleAdditionToggle = (addition: string) => {
@@ -76,11 +94,19 @@ const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstruction
 
   const handleGenerateFullCV = async () => {
     if (!analysisResult) return;
+    
+    if (!originalCvText && initialAnalysis) {
+        setError("Cannot generate preview from historical data (original CV text not saved). Please start a new analysis.");
+        return;
+    }
+
     setIsGeneratingPreview(true);
     setError(null);
     try {
+        // In a real app, we would need a more robust way to get text from PDF for the find-replace op.
+        // For this demo, we assume the user just uploaded it or we have it in state.
         const result = await geminiService.generateFullCVPreview(
-            originalCvText,
+            originalCvText || "CV Content Placeholder", // Fallback if text extraction failed locally
             analysisResult.suggested_improvements,
             approvedAdditions
         );
@@ -89,7 +115,7 @@ const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstruction
     } catch (err) {
         console.error(err);
         setError("Failed to generate the full CV preview. Please try again.");
-        setCvView('analysis'); // Stay on analysis view if generation fails
+        setCvView('analysis'); 
     } finally {
         setIsGeneratingPreview(false);
     }
@@ -106,6 +132,14 @@ const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstruction
     document.body.removeChild(element);
   }
 
+  // Simple sanitization to prevent basic XSS while allowing our specific spans
+  // In a real production app, use a library like DOMPurify
+  const sanitizeHTML = (html: string) => {
+      // Remove script tags
+      return html.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gm, "")
+                 .replace(/on\w+="[^"]*"/g, "");
+  };
+
   const renderAnalysisView = () => (
     <div className="max-w-3xl mx-auto">
       {isLoading ? (
@@ -115,11 +149,12 @@ const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstruction
         </div>
       ) : analysisResult ? (
         <div className="space-y-6 animate-fade-in">
-          <div className="mb-8">
+          <div className="mb-8 flex justify-between items-center">
             <button onClick={handleStartOver} className="flex items-center gap-2 text-sm text-slate-400 hover:text-indigo-400 transition-colors">
               <ArrowLeftIcon />
               Start a new analysis
             </button>
+             {initialAnalysis && <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded">Viewing Historical Result</span>}
           </div>
           {error && <div className="mb-6 p-4 bg-red-900/50 border border-red-500/30 rounded-lg text-red-300 text-sm whitespace-pre-wrap">{error}</div>}
           
@@ -174,13 +209,18 @@ const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstruction
           </div>
 
           <div className="text-center pt-6">
-            <button
-                onClick={handleGenerateFullCV}
-                disabled={isGeneratingPreview}
-                className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium text-lg disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center mx-auto"
-            >
-                {isGeneratingPreview ? <><SpinnerIcon /> Generating Preview...</> : 'Generate full CV with changes'}
-            </button>
+            {!initialAnalysis && (
+                <button
+                    onClick={handleGenerateFullCV}
+                    disabled={isGeneratingPreview}
+                    className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium text-lg disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center mx-auto"
+                >
+                    {isGeneratingPreview ? <><SpinnerIcon /> Generating Preview...</> : 'Generate full CV with changes'}
+                </button>
+            )}
+            {initialAnalysis && (
+                <p className="text-slate-500 text-sm italic">Full CV generation is only available directly after a new analysis.</p>
+            )}
           </div>
         </div>
       ) : ( // Initial Input View
@@ -243,7 +283,7 @@ const CVSuggestionsView: React.FC<CVSuggestionsViewProps> = ({ onShowInstruction
             </div>
             <div 
                 className="prose prose-sm prose-invert max-w-none prose-p:my-2 prose-ul:my-2 prose-h2:my-3 prose-h3:my-3"
-                dangerouslySetInnerHTML={{ __html: previewResult?.full_cv_preview_html || '' }} 
+                dangerouslySetInnerHTML={{ __html: sanitizeHTML(previewResult?.full_cv_preview_html || '') }} 
             />
         </div>
     </div>

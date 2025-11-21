@@ -1,8 +1,8 @@
-// FIX: Use Firebase v9 compat library to resolve module import errors.
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/firestore';
+import { initializeApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
-// Your web app's Firebase configuration from the script you provided
+// Your web app's Firebase configuration
 const firebaseConfig = {
     apiKey: "AIzaSyDcr9-xdleWQADdE4kClx4yOav1aR-mtaA",
     authDomain: "interview-coach-pro-v1.firebaseapp.com",
@@ -13,16 +13,9 @@ const firebaseConfig = {
     measurementId: "G-5MVPN6F6QH"
 };
 
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
 
-let db: firebase.firestore.Firestore | undefined;
-
-try {
-  // Initialize Firebase
-  firebase.initializeApp(firebaseConfig);
-  // Get a reference to the Firestore service
-  db = firebase.firestore();
-} catch (error) {
-  console.error("Firebase initialization failed:", error);
-}
-
-export { db };
+export { db, auth };

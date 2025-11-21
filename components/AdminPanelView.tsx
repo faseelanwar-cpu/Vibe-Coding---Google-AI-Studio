@@ -3,8 +3,8 @@ import { ArrowLeftIcon, TrashIcon, SpinnerIcon } from './icons';
 
 interface AdminPanelViewProps {
   approvedEmails: string[];
-  onAddEmail: (email: string) => Promise<{ success: boolean }>;
-  onRemoveEmail: (email: string) => Promise<{ success: boolean }>;
+  onAddEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
+  onRemoveEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
   onBack: () => void;
 }
 
@@ -34,9 +34,9 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ approvedEmails, onAddEm
     }
     
     setIsAdding(true);
-    const { success } = await onAddEmail(newEmail);
-    if (!success) {
-        setSyncWarning('Could not sync with backend. Local copy saved.');
+    const result = await onAddEmail(newEmail);
+    if (!result.success) {
+        setSyncWarning(`Error: ${result.error || 'Could not sync with backend'}`);
     }
     setIsAdding(false);
     setNewEmail('');
@@ -45,9 +45,9 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ approvedEmails, onAddEm
   const handleRemove = async (email: string) => {
     setSyncWarning(null);
     setRemovingEmail(email);
-    const { success } = await onRemoveEmail(email);
-    if (!success) {
-        setSyncWarning('Could not sync removal with backend. Local copy updated.');
+    const result = await onRemoveEmail(email);
+    if (!result.success) {
+        setSyncWarning(`Error: ${result.error || 'Could not remove from backend'}`);
     }
     setRemovingEmail(null);
   };
@@ -60,7 +60,7 @@ const AdminPanelView: React.FC<AdminPanelViewProps> = ({ approvedEmails, onAddEm
         </button>
         <h1 className="text-3xl font-bold tracking-tight">Admin Panel</h1>
       </div>
-       {syncWarning && <div className="mb-4 text-center text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg text-sm">{syncWarning}</div>}
+       {syncWarning && <div className="mb-4 text-center text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg text-sm break-words">{syncWarning}</div>}
       <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
         <h2 className="font-semibold mb-4">Add New User</h2>
         <form onSubmit={e => {e.preventDefault(); handleAdd();}} className="flex flex-col sm:flex-row gap-3">

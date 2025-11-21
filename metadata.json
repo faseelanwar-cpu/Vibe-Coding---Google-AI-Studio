@@ -1,5 +1,5 @@
 {
-  "name": "Interview Coach Pro v1",
+  "name": "Interview Coach Pro v2",
   "description": "A virtual, AI-powered mock interview tool that provides tailored questions based on your CV and a job description, and gives you a full report with scores and feedback.",
   "requestFramePermissions": [
     "microphone"

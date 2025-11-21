@@ -1,22 +1,34 @@
 import React, { useState } from 'react';
+import { validateAdminPin } from '../services/userService';
+import { SpinnerIcon } from './icons';
 
 interface AdminPinViewProps {
   onCorrectPin: () => void;
   onBack: () => void;
 }
 
-const ADMIN_PIN = '112358';
-
 const AdminPinView: React.FC<AdminPinViewProps> = ({ onCorrectPin, onBack }) => {
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
-  const handleEnter = () => {
-    if (pin === ADMIN_PIN) {
+  const handleEnter = async () => {
+    if (!pin) return;
+    
+    setIsValidating(true);
+    setError(null);
+
+    const result = await validateAdminPin(pin);
+
+    setIsValidating(false);
+
+    if (result.isValid) {
       onCorrectPin();
     } else {
-      setError('Incorrect PIN.');
-      setPin('');
+      setError(result.error || 'Incorrect PIN.');
+      if (result.error === 'Incorrect PIN.') {
+          setPin('');
+      }
     }
   };
 
@@ -34,13 +46,20 @@ const AdminPinView: React.FC<AdminPinViewProps> = ({ onCorrectPin, onBack }) => 
             className="w-full bg-slate-900/50 border border-slate-700 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-shadow text-center tracking-widest"
             placeholder="******"
             required
+            disabled={isValidating}
           />
-          {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
+          {error && (
+            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-sm text-red-300 text-left">
+                {error}
+            </div>
+          )}
+          
           <button
             type="submit"
-            className="w-full mt-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium text-lg transition-colors"
+            disabled={isValidating}
+            className="w-full mt-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium text-lg transition-colors flex items-center justify-center gap-2 disabled:bg-slate-700"
           >
-            Enter
+            {isValidating ? <><SpinnerIcon /> Verifying...</> : 'Enter'}
           </button>
         </form>
 

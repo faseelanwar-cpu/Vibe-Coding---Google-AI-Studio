@@ -1,3 +1,4 @@
+
 export enum TopLevelView {
   SIGNIN = 'signin',
   ADMIN_PIN = 'admin-pin',
@@ -8,6 +9,7 @@ export enum TopLevelView {
 export enum Feature {
   CV_SUGGESTIONS = 'cv',
   INTERVIEW = 'interview',
+  HISTORY = 'history',
 }
 
 export enum InterviewFlowView {
@@ -78,4 +80,23 @@ export interface CVAnalysisResult {
 export interface FullCVPreviewResult {
     full_cv_preview_html: string;
     downloadable_cv_markdown: string;
+}
+
+// Backend & Auth Types
+
+export interface UserProfile {
+  email: string;
+  isAdmin: boolean;
+  uid?: string;
+  createdAt?: any;
+}
+
+export interface HistoryItem {
+  id: string;
+  type: 'interview' | 'cv_analysis';
+  date: Date;
+  title: string;
+  subtitle: string;
+  score?: number;
+  data: InterviewReport | CVAnalysisResult; // The full stored data
 }
