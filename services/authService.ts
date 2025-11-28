@@ -1,5 +1,5 @@
 import { auth } from '../firebaseConfig';
-import { signInAnonymously, signOut as firebaseSignOut, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import firebase from 'firebase/compat/app';
 import { UserProfile } from '../types';
 import * as userService from './userService';
 
@@ -40,7 +40,6 @@ const getAuthErrorMessage = (error: any): string => {
         case 'auth/api-key-not-valid':
             return "Firebase API Key is invalid. Please check your configuration.";
         default:
-            // If it's a permission-denied from the Firestore side during the auth flow
             if (msg && msg.includes("permission-denied")) {
                 return "Access Denied: Database permissions are blocking this request.";
             }
@@ -58,33 +57,24 @@ export const signInWithEmail = async (email: string): Promise<{ user: UserProfil
   }
 
   try {
-    // 1. Sign in anonymously FIRST to establish a secure connection to Firestore.
-    // This ensures we have permission to read the 'approved_users' collection if rules require auth.
     if (!auth.currentUser) {
         try {
-            await signInAnonymously(auth);
+            await auth.signInAnonymously();
         } catch (anonError: any) {
              console.error("Anonymous Auth Init Failed:", anonError);
              return { user: null, error: `Connection failed: ${getAuthErrorMessage(anonError)}` };
         }
     }
 
-    // 2. Check if the email is in the allowlist
     const profile = await userService.getUserProfile(email);
     
     if (!profile) {
         return { user: null, error: "Access Denied: This email is not on the approved access list." };
     }
 
-    // 3. Persist the email locally so we 'remember' them
     localStorage.setItem(STORAGE_KEY_EMAIL, email);
-
-    // 4. Return the profile (using the email as the ID for history lookups)
     const userProfile = { ...profile, uid: email };
-    
-    // Notify immediately so UI updates without reload
     notifyListeners(userProfile);
-    
     return { user: userProfile };
 
   } catch (error: any) {
@@ -99,31 +89,26 @@ export const signInWithGoogle = async (): Promise<{ user: UserProfile | null; er
     }
     
     try {
-        const provider = new GoogleAuthProvider();
-        // Force account selection prompts so users can switch accounts if needed
+        const provider = new firebase.auth.GoogleAuthProvider();
         provider.setCustomParameters({
             prompt: 'select_account'
         });
 
-        const result = await signInWithPopup(auth, provider);
+        const result = await auth.signInWithPopup(provider);
         const user = result.user;
         
         if (!user || !user.email) {
             return { user: null, error: "Could not identify user email." };
         }
 
-        // SECURITY CHECK: Verify email is in allowed list
         const profile = await userService.getUserProfile(user.email);
         
         if (!profile) {
-            // If not allowed, strictly sign them out immediately
-            await firebaseSignOut(auth);
+            await auth.signOut();
             return { user: null, error: "Access Denied: Your Google account is not on the approved access list." };
         }
 
-        // If allowed, store their email session locally for consistency with existing logic
         localStorage.setItem(STORAGE_KEY_EMAIL, user.email);
-        
         const userProfile = { ...profile, uid: user.email };
         notifyListeners(userProfile);
 
@@ -138,7 +123,7 @@ export const signInWithGoogle = async (): Promise<{ user: UserProfile | null; er
 export const signOut = async () => {
   if (auth) {
     try {
-        await firebaseSignOut(auth);
+        await auth.signOut();
     } catch (e) {
         console.warn("Error signing out of Firebase:", e);
     }
@@ -154,28 +139,21 @@ const notifyListeners = (user: UserProfile | null) => {
 export const subscribeToAuthChanges = (callback: (user: UserProfile | null) => void) => {
     authStateListeners.push(callback);
 
-    // Check for existing session
     const storedEmail = localStorage.getItem(STORAGE_KEY_EMAIL);
 
     if (storedEmail && auth) {
-        // Ensure we have a firebase connection
-        onAuthStateChanged(auth, async (firebaseUser) => {
+        auth.onAuthStateChanged(async (firebaseUser) => {
             if (firebaseUser) {
-                // We have a connection, validate the stored email again
                 const profile = await userService.getUserProfile(storedEmail);
                 if (profile) {
-                    callback({ ...profile, uid: storedEmail }); // Use email as UID for logic
+                    callback({ ...profile, uid: storedEmail });
                 } else {
-                    // Profile no longer exists or valid
                     localStorage.removeItem(STORAGE_KEY_EMAIL);
                     callback(null);
                 }
             } else {
-                // If firebase disconnects or isn't signed in, try to sign in anonymously again if we have a stored email
-                // (Unless we were signed in with Google, in which case firebaseUser would be null and we might need to re-prompt)
-                // For simplicity, we rely on storedEmail to attempt anonymous re-connection for simple-auth users
                 if (localStorage.getItem(STORAGE_KEY_EMAIL)) {
-                     signInAnonymously(auth).catch(() => callback(null));
+                     auth.signInAnonymously().catch(() => callback(null));
                 } else {
                     callback(null);
                 }

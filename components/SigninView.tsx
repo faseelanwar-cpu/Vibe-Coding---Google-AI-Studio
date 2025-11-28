@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { signInWithEmail, signInWithGoogle } from '../services/authService';
 import { SpinnerIcon, GoogleIcon } from './icons';
@@ -57,10 +58,10 @@ const SigninView: React.FC<SigninViewProps> = ({ onNavigateAdmin, onShowInstruct
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 text-center">
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4 text-slate-50">
-          AI virtual mock interviews for real job descriptions.
+          AI-powered CV alignment and virtual mock interviews.
         </h1>
         <p className="text-slate-300 max-w-3xl mx-auto mb-12">
-          Paste the actual JD, upload your CV or LinkedIn PDF, and we’ll run a voice interview tailored to that company. Every answer is recorded, scored, and available as a downloadable report.
+          Paste the actual JD and your CV to get tailored improvement suggestions, then run a realistic voice interview for that role. Every answer is recorded, scored, and available as a downloadable report.
         </p>
         
         <div className="max-w-md mx-auto">

@@ -1,13 +1,16 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import SetupView from './components/SetupView';
 import InterviewView from './components/InterviewView';
 import ReportView from './components/ReportView';
 import SigninView from './components/SigninView';
 import AdminPanelView from './components/AdminPanelView';
-import AdminPinView from './components/AdminPinView'; // Restored import
+import AdminPinView from './components/AdminPinView';
 import InstructionsModal from './components/InstructionsModal';
+import OnboardingModal from './components/OnboardingModal'; // New Import
 import CVSuggestionsView from './components/CVSuggestionsView';
 import HistoryView from './components/HistoryView';
+import UserProfileView from './components/UserProfileView';
 import { InterviewFlowView, InitialInterviewState, InterviewReport, TopLevelView, Feature, UserProfile, CVAnalysisResult } from './types';
 import { UserIcon, SpinnerIcon } from './components/icons';
 import * as userService from './services/userService';
@@ -24,6 +27,7 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<TopLevelView>(TopLevelView.SIGNIN);
   const [activeFeature, setActiveFeature] = useState<Feature>(Feature.CV_SUGGESTIONS);
   const [showInstructions, setShowInstructions] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false); // New State
   
   // Interview State
   const [interviewFlowView, setInterviewFlowView] = useState<InterviewFlowView>(InterviewFlowView.SETUP);
@@ -39,8 +43,11 @@ const App: React.FC = () => {
       setUser(profile);
       if (profile) {
         setCurrentView(TopLevelView.APP);
+        // Check for onboarding
+        if (!profile.hasCompletedOnboarding) {
+            setShowOnboarding(true);
+        }
       } else {
-        // If we are in admin panel/pin mode, don't auto-redirect to signin yet unless explicit logout
         if (currentView !== TopLevelView.ADMIN_PANEL && currentView !== TopLevelView.ADMIN_PIN) {
             setCurrentView(TopLevelView.SIGNIN);
         }
@@ -53,7 +60,6 @@ const App: React.FC = () => {
   // --- Auth Handlers ---
   const handleSignout = useCallback(async () => {
     await authService.signOut();
-    // State reset happens via listener
     setInterviewFlowView(InterviewFlowView.SETUP);
     setInitialInterviewState(null);
     setInterviewReport(null);
@@ -64,8 +70,18 @@ const App: React.FC = () => {
   const openInstructions = () => setShowInstructions(true);
   const closeInstructions = () => setShowInstructions(false);
 
+  // --- Onboarding Handler ---
+  const handleOnboardingComplete = async () => {
+      setShowOnboarding(false);
+      if (user && user.uid) {
+          // Update DB
+          await userService.completeOnboarding(user.uid); // user.uid is mapped to email in authService
+          // Update local state to prevent re-showing in this session if DB update lags
+          setUser(prev => prev ? ({ ...prev, hasCompletedOnboarding: true }) : null);
+      }
+  };
+
   // --- Admin Handlers ---
-  // We keep the approvedEmails state locally for the panel view, but fetching is done dynamically
   const [adminPanelEmails, setAdminPanelEmails] = useState<string[]>([]);
 
   const enterAdminPanel = async () => {
@@ -74,12 +90,10 @@ const App: React.FC = () => {
       setCurrentView(TopLevelView.ADMIN_PANEL);
   };
 
-  // For authenticated admins via header
   const handleHeaderAdminClick = () => {
      if (user?.isAdmin) enterAdminPanel();
   };
 
-  // For PIN entry success
   const handleAdminPinSuccess = () => {
      enterAdminPanel();
   };
@@ -107,7 +121,6 @@ const App: React.FC = () => {
   const handleInterviewFinish = useCallback(async (report: InterviewReport) => {
     setInterviewReport(report);
     setInterviewFlowView(InterviewFlowView.REPORT);
-    // Auto Save to DB
     if (user && user.uid) {
         await dbService.saveInterviewReport(user.uid, report);
     }
@@ -155,6 +168,8 @@ const App: React.FC = () => {
 
   const renderAppContent = () => {
     switch (activeFeature) {
+      case Feature.PROFILE:
+        return user?.uid ? <UserProfileView userId={user.uid} /> : null;
       case Feature.INTERVIEW:
         return renderInterviewFlow();
       case Feature.HISTORY:
@@ -182,6 +197,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans">
        {showInstructions && <InstructionsModal onClose={closeInstructions} />}
+       {showOnboarding && <OnboardingModal onComplete={handleOnboardingComplete} />}
       
        {/* Header */}
        {(currentView === TopLevelView.APP) && (
@@ -206,6 +222,12 @@ const App: React.FC = () => {
                     className={`px-3 py-1 rounded-md transition-colors ${activeFeature === Feature.INTERVIEW ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
                     >
                     Interview
+                    </button>
+                    <button 
+                    onClick={() => setActiveFeature(Feature.PROFILE)}
+                    className={`px-3 py-1 rounded-md transition-colors ${activeFeature === Feature.PROFILE ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                    >
+                    Profile
                     </button>
                     <button 
                     onClick={() => setActiveFeature(Feature.HISTORY)}
@@ -247,7 +269,7 @@ const App: React.FC = () => {
       <main>
         {currentView === TopLevelView.SIGNIN && (
             <SigninView 
-                approvedEmails={[]} // Handled by auth service
+                approvedEmails={[]} 
                 onSignin={() => true} 
                 onNavigateAdmin={() => setCurrentView(TopLevelView.ADMIN_PIN)} 
                 onShowInstructions={openInstructions} 

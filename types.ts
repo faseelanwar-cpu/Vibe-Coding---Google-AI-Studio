@@ -10,6 +10,7 @@ export enum Feature {
   CV_SUGGESTIONS = 'cv',
   INTERVIEW = 'interview',
   HISTORY = 'history',
+  PROFILE = 'profile', // New feature
 }
 
 export enum InterviewFlowView {
@@ -24,10 +25,68 @@ export interface DocumentData {
   name: string;
 }
 
+// --- User Profile Structures ---
+
+export interface WorkExperience {
+  id: string;
+  company: string;
+  role: string;
+  startDate: string;
+  endDate: string; // "Present" or date
+  description: string | string[]; // Updated to support bullet array
+}
+
+export interface Education {
+  id: string;
+  institution: string;
+  degree: string;
+  major: string;
+  startDate: string;
+  endDate: string;
+  description: string | string[]; // Updated to support bullet array
+}
+
+export interface Certification {
+  id: string;
+  name: string;
+  issuer: string;
+  startDate: string; // Issue Date
+  expirationDate: string;
+  credentialId: string;
+  url: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string | string[]; // Updated
+  link?: string;
+}
+
+export interface CandidateProfile {
+  personalInfo: {
+    name: string;
+    email: string;
+    phone: string;
+    linkedin?: string;
+    location?: string;
+    portfolio?: string;
+  };
+  summary: string;
+  experience: WorkExperience[];
+  education: Education[];
+  skills: string[]; // Array of strings
+  projects: Project[];
+  certifications: Certification[];
+}
+
+// -------------------------------
+
 export interface InitialInterviewState {
   jd: string;
   cv?: DocumentData;
   linkedIn?: DocumentData;
+  profileData?: CandidateProfile; // Allow passing structured profile instead of file
 }
 
 export interface Scores {
@@ -61,12 +120,17 @@ export interface InterviewReport {
 }
 
 
-// New, expert-level structure for CV suggestions
 export interface SuggestedImprovement {
   section: 'Experience' | 'Summary' | 'Skills' | 'Achievements' | string;
   original: string;
   suggestion: string;
   reason: string;
+  confidence_score: number; // 0 to 100
+}
+
+export interface KeywordSuggestion {
+  keyword: string;
+  importance: 'High' | 'Medium';
 }
 
 export interface CVAnalysisResult {
@@ -74,21 +138,23 @@ export interface CVAnalysisResult {
   match_explanation: string[];
   suggested_improvements: SuggestedImprovement[];
   critical_additions: string[];
+  missing_keywords: KeywordSuggestion[];
+  extracted_text?: string; 
 }
 
-// New structure for the full CV preview
 export interface FullCVPreviewResult {
     full_cv_preview_html: string;
     downloadable_cv_markdown: string;
+    latex_source: string;
+    structured_cv: CandidateProfile; // Added for PDF generation
 }
-
-// Backend & Auth Types
 
 export interface UserProfile {
   email: string;
   isAdmin: boolean;
   uid?: string;
   createdAt?: any;
+  hasCompletedOnboarding?: boolean;
 }
 
 export interface HistoryItem {
@@ -98,5 +164,5 @@ export interface HistoryItem {
   title: string;
   subtitle: string;
   score?: number;
-  data: InterviewReport | CVAnalysisResult; // The full stored data
+  data: InterviewReport | CVAnalysisResult; 
 }

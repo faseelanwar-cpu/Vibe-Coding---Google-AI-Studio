@@ -1,6 +1,6 @@
+
 import { db, auth } from '../firebaseConfig';
-import { collection, query, where, getDocs, addDoc, deleteDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth';
+import firebase from 'firebase/compat/app';
 import { UserProfile } from '../types';
 
 const FIRESTORE_COLLECTION = 'approved_users';
@@ -27,7 +27,6 @@ const getFirestoreErrorMessage = (error: any): string => {
         case 'deadline-exceeded':
             return "The operation timed out. Please check your internet connection.";
         case 'failed-precondition':
-            // This often happens with missing indexes or offline queries requiring cache
             if (msg && msg.includes("index")) {
                 return "System Error: A required database index is missing. Please contact support.";
             }
@@ -44,20 +43,22 @@ const getFirestoreErrorMessage = (error: any): string => {
     }
 };
 
+// Re-export helper for authService usage (simplified local version if needed)
+function getAuthErrorMessage(error: any): string {
+    return error.message;
+}
+
 export const loadApprovedEmails = async (): Promise<string[]> => {
     if (!db) return [];
 
     try {
-        const q = collection(db, FIRESTORE_COLLECTION);
-        const snapshot = await getDocs(q);
+        const snapshot = await db.collection(FIRESTORE_COLLECTION).get();
         return snapshot.docs.map(doc => {
             const data = doc.data();
-            // Handle case where doc ID might be the email, or the email field exists
             return data.email || doc.id;
         });
     } catch (error) {
         console.error("Error loading emails from Firestore:", error);
-        // We return empty array here to not crash the UI, but log the specific error
         return [];
     }
 };
@@ -69,37 +70,67 @@ export const getUserProfile = async (email: string): Promise<UserProfile | null>
         const cleanEmail = email.toLowerCase().trim();
         console.log(`Looking up user: '${cleanEmail}'`);
 
-        // Strategy 1: Query by 'email' field (Standard way)
-        const q = query(collection(db, FIRESTORE_COLLECTION), where('email', '==', cleanEmail));
-        const snapshot = await getDocs(q);
+        // Strategy 1: Query by 'email' field
+        const snapshot = await db.collection(FIRESTORE_COLLECTION).where('email', '==', cleanEmail).get();
         
         if (!snapshot.empty) {
             const data = snapshot.docs[0].data();
             return {
                 email: data.email,
                 isAdmin: !!data.isAdmin,
-                createdAt: data.created_at
+                createdAt: data.created_at,
+                hasCompletedOnboarding: !!data.hasCompletedOnboarding
             };
         }
 
-        // Strategy 2: Check if the Document ID is the email (Common manual entry way)
-        const docRef = doc(db, FIRESTORE_COLLECTION, cleanEmail);
-        const docSnap = await getDoc(docRef);
+        // Strategy 2: Check if the Document ID is the email
+        const docRef = db.collection(FIRESTORE_COLLECTION).doc(cleanEmail);
+        const docSnap = await docRef.get();
         
-        if (docSnap.exists()) {
+        if (docSnap.exists) {
              const data = docSnap.data();
-             return {
-                email: cleanEmail,
-                isAdmin: !!data.isAdmin,
-                createdAt: data.created_at
-             };
+             if (data) {
+                 return {
+                    email: cleanEmail,
+                    isAdmin: !!data.isAdmin,
+                    createdAt: data.created_at,
+                    hasCompletedOnboarding: !!data.hasCompletedOnboarding
+                 };
+             }
         }
 
         return null;
     } catch (error: any) {
         console.error("Error checking user profile:", getFirestoreErrorMessage(error));
-        // If it's a permission error, it means the user definitely isn't allowed
         return null;
+    }
+};
+
+export const completeOnboarding = async (email: string): Promise<boolean> => {
+    if (!db) return false;
+    const cleanEmail = email.toLowerCase().trim();
+
+    try {
+        // Find document reference first (similar strategies as getUserProfile)
+        let docRef: firebase.firestore.DocumentReference | null = null;
+        
+        const snapshot = await db.collection(FIRESTORE_COLLECTION).where('email', '==', cleanEmail).get();
+        if (!snapshot.empty) {
+            docRef = snapshot.docs[0].ref;
+        } else {
+            const idRef = db.collection(FIRESTORE_COLLECTION).doc(cleanEmail);
+            const docSnap = await idRef.get();
+            if (docSnap.exists) docRef = idRef;
+        }
+
+        if (docRef) {
+            await docRef.update({ hasCompletedOnboarding: true });
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error("Failed to update onboarding status", error);
+        return false;
     }
 };
 
@@ -108,11 +139,11 @@ export const addApprovedEmail = async (email: string): Promise<{ success: boolea
     
     try {
         const cleanEmail = email.toLowerCase().trim();
-        // Add as a field
-        await addDoc(collection(db, FIRESTORE_COLLECTION), {
+        await db.collection(FIRESTORE_COLLECTION).add({
             email: cleanEmail,
             isAdmin: false,
-            created_at: serverTimestamp()
+            created_at: firebase.firestore.FieldValue.serverTimestamp(),
+            hasCompletedOnboarding: false
         });
         const finalEmails = await loadApprovedEmails();
         return { success: true, finalEmails };
@@ -129,16 +160,14 @@ export const removeApprovedEmail = async (emailToRemove: string): Promise<{ succ
         const cleanEmail = emailToRemove.toLowerCase().trim();
         
         // 1. Try finding by field
-        const q = query(collection(db, FIRESTORE_COLLECTION), where('email', '==', cleanEmail));
-        const snapshot = await getDocs(q);
-        
-        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+        const snapshot = await db.collection(FIRESTORE_COLLECTION).where('email', '==', cleanEmail).get();
+        const deletePromises = snapshot.docs.map(doc => doc.ref.delete());
         
         // 2. Try finding by ID
-        const docRef = doc(db, FIRESTORE_COLLECTION, cleanEmail);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            deletePromises.push(deleteDoc(docRef));
+        const docRef = db.collection(FIRESTORE_COLLECTION).doc(cleanEmail);
+        const docSnap = await docRef.get();
+        if (docSnap.exists) {
+            deletePromises.push(docRef.delete());
         }
 
         await Promise.all(deletePromises);
@@ -155,21 +184,20 @@ export const validateAdminPin = async (inputPin: string): Promise<{ isValid: boo
     if (!db || !auth) return { isValid: false, error: "Database not initialized" };
 
     try {
-        // Ensure we have at least an anonymous connection to read the DB config
         if (!auth.currentUser) {
             try {
-                await signInAnonymously(auth);
+                await auth.signInAnonymously();
             } catch (authError: any) {
                 console.error("Anonymous Auth Failed:", authError);
-                return { isValid: false, error: `Auth Error: ${getAuthErrorMessage(authError)}` };
+                return { isValid: false, error: `Auth Error: ${authError.message}` };
             }
         }
 
-        const docRef = doc(db, CONFIG_COLLECTION, CONFIG_DOC_ID);
+        const docRef = db.collection(CONFIG_COLLECTION).doc(CONFIG_DOC_ID);
         let docSnap;
         
         try {
-            docSnap = await getDoc(docRef);
+            docSnap = await docRef.get();
         } catch (dbError: any) {
             console.error("Firestore Read Failed:", dbError);
             
@@ -180,13 +208,10 @@ export const validateAdminPin = async (inputPin: string): Promise<{ isValid: boo
             return { isValid: false, error: `Connection Error: ${getFirestoreErrorMessage(dbError)}` };
         }
 
-        if (docSnap.exists()) {
+        if (docSnap.exists) {
             const data = docSnap.data();
-            
-            // Robust Cleaning:
-            // 1. Convert to string (handles Numbers)
-            // 2. Remove accidental quotes (handles '"123456"')
-            // 3. Trim whitespace (handles '123456 ')
+            if (!data) return { isValid: false, error: "Invalid data" };
+
             const storedPin = String(data.pin).replace(/['"]/g, '').trim();
             const cleanInput = inputPin.trim();
 
@@ -198,7 +223,6 @@ export const validateAdminPin = async (inputPin: string): Promise<{ isValid: boo
                 return { isValid: false, error: "Incorrect PIN." };
             }
         } else {
-            // SECURITY: If config is missing, deny access.
             return { isValid: false, error: "Security Configuration missing. Please create 'system_config/admin_settings' in database." };
         }
     } catch (error: any) {
@@ -206,10 +230,3 @@ export const validateAdminPin = async (inputPin: string): Promise<{ isValid: boo
         return { isValid: false, error: error.message || "Unknown verification error" };
     }
 };
-
-// Re-export helper for authService usage
-function getAuthErrorMessage(error: any): string {
-    // Simple local duplicate or import from authService if circular dependency wasn't an issue.
-    // For simplicity, we inline basic auth error mapping or use generic fallback
-    return error.message;
-}
